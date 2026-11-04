@@ -24,7 +24,7 @@ Bedrock AgentCore
 Private API Gateway
     |
     v
-Fargate PEP (Plane A identity ingestion / Plane B MCP execution)
+Fargate PEP ( Plane B MCP execution)
     |
     | short-lived, down-scoped AWS credentials
     v
