@@ -869,7 +869,7 @@ def test_sqlglot_is_pinned_to_one_exact_version_everywhere():
 
     root = Path(__file__).resolve().parent.parent
     pins: dict[str, list[str]] = {}
-    for name in ("requirements.txt", "pyproject.toml", "setup.py", "Dockerfile.ecr-test"):
+    for name in ("requirements.txt", "pyproject.toml"):
         text = (root / name).read_text(encoding="utf-8")
         pins[name] = re.findall(r"sqlglot\s*([<>=!~]+[\w.]+)", text)
         assert pins[name], f"{name} must declare sqlglot"
@@ -1800,13 +1800,19 @@ def test_route_modules_are_plain_python_with_inspectable_signatures():
             inspect.signature(route.endpoint)
 
 
-def test_route_modules_are_not_in_cython_build_lists():
+def test_default_build_is_pure_python():
     root = Path(__file__).resolve().parent.parent
-    for name in ("setup.py", "pyproject.toml", "build.sh", "build.ps1"):
+    active_build_files = (
+        "pyproject.toml",
+        "setup.py",
+        "Dockerfile.ecr-test",
+        "build.sh",
+        "build.ps1",
+    )
+    for name in active_build_files:
         text = (root / name).read_text(encoding="utf-8")
-        for module in ("pep_server", "plane_a_ingest", "plane_b_mcp"):
-            assert not re.search(rf"^\s*['\"][\w./]*{module}(\.py)?['\"],?\s*$", text, re.MULTILINE), (name, module)
-        assert not re.search(r"^\s*['\"]agentcore_tip[./]server(\.py)?['\"],?\s*$", text, re.MULTILINE), name
+        assert "Cython" not in text and "cythonize" not in text.lower(), name
+    assert not (root / "pyproject.cython.toml").exists()
 
 
 def test_invocations_runner_executes_off_the_event_loop(monkeypatch: pytest.MonkeyPatch):

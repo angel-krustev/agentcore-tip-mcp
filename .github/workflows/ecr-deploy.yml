@@ -2,8 +2,7 @@
 # AgentCore-TIP-MCP-Broker — Build, Test, Push to ECR (TEST tag)
 # ==============================================================================
 # Pipeline:
-#   Job 1: Build Docker image via Dockerfile.ecr-test (self-contained:
-#           compiles Cython arm64 extensions inline, Python 3.12 runtime)
+#   Job 1: Build a pure-Python Docker image via Dockerfile.ecr-test (Python 3.12 runtime)
 #
 # Promote to :prod/:latest via .github/workflows/ecr-promote.yml
 #
@@ -31,7 +30,7 @@ permissions:
 
 jobs:
   # ----------------------------------------------------------
-  # Job 1: Build Docker image (Cython compile + MCP server runtime)
+  # Job 1: Build Docker image (MCP server runtime)
   # ----------------------------------------------------------
   build-image:
     name: Build Image → Push TEST

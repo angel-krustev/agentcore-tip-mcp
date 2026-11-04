@@ -68,7 +68,6 @@ export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 # Athena configuration for the server
 export ATHENA_WORKGROUP="${ATHENA_WORKGROUP:-idc-wg}"
 export ATHENA_DATABASE="${ATHENA_DATABASE:-lfdb}"
-export ATHENA_TABLE="${ATHENA_TABLE:-clients}"
 
 # ============================================================================
 # Functions
@@ -84,7 +83,6 @@ AWS_REGION=${AWS_REGION}
 AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
 ATHENA_WORKGROUP=${ATHENA_WORKGROUP}
 ATHENA_DATABASE=${ATHENA_DATABASE}
-ATHENA_TABLE=${ATHENA_TABLE}
 EOF
 }
 

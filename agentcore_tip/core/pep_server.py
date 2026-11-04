@@ -12,8 +12,7 @@ network layer can keep human users away from the agent-facing plane:
   execution, reachable by the agent network only.
 
 Each app mounts only its own router: Plane B's routes do not exist on Plane A's port
-and vice versa. This module defines routes, so it must stay plain Python (never
-Cython-compiled). The LLM host (``agentcore_tip.server``) is a separate process and
+and vice versa. The LLM host (``agentcore_tip.server``) is a separate process and
 never mounts these routers.
 
 Usage:

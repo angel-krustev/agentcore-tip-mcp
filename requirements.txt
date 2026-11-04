@@ -1,5 +1,5 @@
 # Security-critical pins for the PEP. sqlglot is the read-only SQL guard: parser behaviour
 # differs between releases, so upgrade it deliberately, re-run tests/test_pep_e2e.py
 # (the SQL guard corpus) and update every place below together:
-#   pyproject.toml, setup.py, Dockerfile.ecr-test (a test asserts they agree).
+#   pyproject.toml (a test asserts the dependency pins agree).
 sqlglot==30.22.0

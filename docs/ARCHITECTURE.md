@@ -103,7 +103,6 @@ takes `session_ref` and nothing credential-like.
 | No token echo | the 422 handler returns only the field location and a fixed message, on both planes | `plane_a_ingest.py`, `pep_server.py` |
 | Request size | streamed bytes are counted (chunked bodies, missing or lying `Content-Length`), 413 before the route runs, remainder drained within a bound so clients get the 413 instead of a reset | [`http_limits.py`](../agentcore_tip/core/http_limits.py) |
 | Event loop never blocked | every Boto3 call and the Athena polling loop run in `run_in_executor` | `plane_a_ingest.py`, `plane_b_mcp.py` |
-| Cython compatibility | route modules (`pep_server`, `plane_a_ingest`, `plane_b_mcp`, `server`) stay plain Python; core logic (`context`, `session_store`, `sql_guard`, `config`, `strategies/*`) is compiled; the image build forces regeneration of C from the `.py` sources | `setup.py`, `Dockerfile.ecr-test` |
 
 ## Request lifecycle
 

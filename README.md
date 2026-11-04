@@ -62,6 +62,8 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
+The default distribution is pure Python.
+
 On Windows, activate with `.venv\Scripts\Activate.ps1`.
 
 Configure the required values for your environment using `.env.example` as a reference. Do not commit credentials, tokens, account-specific secrets, or populated `.env` files.

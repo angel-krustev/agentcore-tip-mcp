@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "Cython>=3.0.0", "wheel>=0.41.0"]
+requires = ["setuptools>=68.0", "wheel>=0.41.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -31,26 +31,11 @@ dependencies = [
   "redis>=5.0.1",
 ]
 
-[tool.cythonize]
-# Core TIP modules to compile to native extensions
-# Core TIP identity and execution logic
-target = [
-    "agentcore_tip/core/strategies/sso_oidc.py",
-    "agentcore_tip/core/strategies/web_identity.py",
-    "agentcore_tip/core/strategies/base.py",
-    "agentcore_tip/core/context.py",
-    "agentcore_tip/core/session_store.py",
-    "agentcore_tip/core/sql_guard.py",
-    "agentcore_tip/core/credentials.py",
-    "agentcore_tip/core/hooks.py",
-    "agentcore_tip/core/config.py",
-    "agentcore_tip/core/exceptions.py",
-    "agentcore_tip/core/decorators.py",
-    "agentcore_tip/core/middleware.py",
-    "agentcore_tip/core/agent_validator.py",
-    "agentcore_tip/core/agentcore_provider.py",
-    # NOTE: pep_server.py, plane_a_ingest.py and plane_b_mcp.py are NOT compiled --
-    # FastAPI needs inspect.signature() on routes
-    "agentcore_tip/integrations/s3_access_grants.py",
-    "agentcore_tip/integrations/lake_formation.py",
-]
+[project.scripts]
+agentcore-tip-mcp = "agentcore_tip.core.pep_server:main"
+
+[tool.setuptools.packages.find]
+include = ["agentcore_tip", "agentcore_tip.*"]
+
+[tool.setuptools.package-data]
+agentcore_tip = ["py.typed"]
