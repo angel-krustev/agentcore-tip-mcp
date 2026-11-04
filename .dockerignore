@@ -1,0 +1,33 @@
+# Virtual environments
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python packages / build artifacts
+*.egg-info/
+build/
+temp.*/
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.yml
+Dockerfile.builder
+Dockerfile.wheel
+
+# CI / build scripts
+build*.sh
+build*.ps1
+
+# Dev / IDE
+.vscode/
+.git/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,126 @@
+# ==============================================================================
+# AgentCore-TIP-MCP-Broker — Promote TEST → PROD
+# ==============================================================================
+# Manually trigger to promote a tested image to customer-facing :prod tag.
+#
+# Flow:  Build & Test pushes :test  →  Promote workflow  →  :prod + :latest
+#
+# Triggers: workflow_dispatch only (manual)
+# ==============================================================================
+
+name: ECR Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Source tag to promote (leave empty for :test)"
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  promote:
+    name: Promote TEST → PROD
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve source tag
+        id: src
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+        run: |
+          SOURCE="$SOURCE_TAG"
+          if [ -z "$SOURCE" ]; then
+            SOURCE="test"
+          fi
+          echo "source=$SOURCE" >> $GITHUB_OUTPUT
+          echo "Promoting: agentcore-tip-mcp-test:$SOURCE → agentcore-tip-mcp: :prod, :latest"
+
+      # ------------------------------------------------------
+      # Ensure prod repository exists
+      # ------------------------------------------------------
+      - name: Create prod repository if needed
+        run: |
+          if ! aws ecr describe-repositories --repository-names agentcore-tip-mcp --region "$AWS_REGION" >/dev/null 2>&1; then
+            aws ecr create-repository \
+              --repository-name agentcore-tip-mcp \
+              --region "$AWS_REGION" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Project,Value=AgentCore-TIP-MCP-Broker Key=Environment,Value=production
+          fi
+
+      # ------------------------------------------------------
+      # Scan image before promotion
+      # ------------------------------------------------------
+      - name: Scan image before promotion (best effort)
+        run: |
+          SOURCE="${{ steps.src.outputs.source }}"
+
+          echo "Scanning agentcore-tip-mcp-test:$SOURCE ..."
+          aws ecr start-image-scan \
+            --repository-name agentcore-tip-mcp-test \
+            --image-id imageTag=$SOURCE || echo "⚠️ Scan not available, continuing..."
+
+          # Attempt to read scan results (non-blocking)
+          sleep 5
+          aws ecr describe-image-scan-findings \
+            --repository-name agentcore-tip-mcp-test \
+            --image-id imageTag=$SOURCE \
+            --query 'imageScanFindings.findingSeverityCounts' \
+            --output json 2>/dev/null || echo "⚠️ No scan results available"
+
+      # ------------------------------------------------------
+      # Cross-repo promote: test → prod
+      # ------------------------------------------------------
+      - name: Promote to :prod + :latest
+        run: |
+          SOURCE="${{ steps.src.outputs.source }}"
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+
+          echo "Promoting $REGISTRY/agentcore-tip-mcp-test:$SOURCE → agentcore-tip-mcp ..."
+
+          # Pull from test repo
+          docker pull "$REGISTRY/agentcore-tip-mcp-test:$SOURCE"
+
+          # Tag for prod repo
+          docker tag "$REGISTRY/agentcore-tip-mcp-test:$SOURCE" "$REGISTRY/agentcore-tip-mcp:$SOURCE"
+          docker tag "$REGISTRY/agentcore-tip-mcp-test:$SOURCE" "$REGISTRY/agentcore-tip-mcp:prod"
+          docker tag "$REGISTRY/agentcore-tip-mcp-test:$SOURCE" "$REGISTRY/agentcore-tip-mcp:latest"
+
+          # Push to prod repo
+          docker push "$REGISTRY/agentcore-tip-mcp:$SOURCE"
+          docker push "$REGISTRY/agentcore-tip-mcp:prod"
+          docker push "$REGISTRY/agentcore-tip-mcp:latest"
+
+          echo "✅ Promoted successfully:"
+          echo "  $REGISTRY/agentcore-tip-mcp:prod"
+          echo "  $REGISTRY/agentcore-tip-mcp:latest"
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Promoted to PROD" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source:** \`agentcore-tip-mcp-test:${{ steps.src.outputs.source }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Prod repo:** \`${{ steps.login-ecr.outputs.registry }}/agentcore-tip-mcp:prod\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest:** \`${{ steps.login-ecr.outputs.registry }}/agentcore-tip-mcp:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Promoted by:** \`${{ github.actor }}\`" >> $GITHUB_STEP_SUMMARY

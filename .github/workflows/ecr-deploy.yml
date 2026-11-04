@@ -1,0 +1,119 @@
+# ==============================================================================
+# AgentCore-TIP-MCP-Broker — Build, Test, Push to ECR (TEST tag)
+# ==============================================================================
+# Pipeline:
+#   Job 1: Build Docker image via Dockerfile.ecr-test (self-contained:
+#           compiles Cython arm64 extensions inline, Python 3.12 runtime)
+#
+# Promote to :prod/:latest via .github/workflows/ecr-promote.yml
+#
+# Triggers: push to main, or manual dispatch
+# ==============================================================================
+
+name: ECR Build & Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_override:
+        description: "Custom image tag (default: commit short SHA)"
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------
+  # Job 1: Build Docker image (Cython compile + MCP server runtime)
+  # ----------------------------------------------------------
+  build-image:
+    name: Build Image → Push TEST
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine image tag
+        id: tag
+        env:
+          TAG_OVERRIDE: ${{ inputs.tag_override }}
+        run: |
+          TAG="$TAG_OVERRIDE"
+          if [ -z "$TAG" ]; then
+            TAG=$(git rev-parse --short HEAD)
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      # ------------------------------------------------------
+      # Build & push as :test (NOT :latest)
+      # ------------------------------------------------------
+      - name: Build & push agentcore-tip-mcp-test:test
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ecr-test
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/agentcore-tip-mcp-test:${{ steps.tag.outputs.tag }}
+            ${{ steps.login-ecr.outputs.registry }}/agentcore-tip-mcp-test:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      # ------------------------------------------------------
+      # Validate
+      # ------------------------------------------------------
+      - name: Validate ECR image
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          echo "✅ TEST image pushed to ECR:"
+          echo "  $REGISTRY/agentcore-tip-mcp-test:test"
+          echo "  $REGISTRY/agentcore-tip-mcp-test:$TAG"
+
+          aws ecr describe-images \
+            --repository-name agentcore-tip-mcp-test \
+            --image-ids imageTag=$TAG \
+            --query 'imageDetails[0].imageManifestMediaType' \
+            --output text
+
+      - name: Summary
+        run: |
+          echo "## 🐳 ECR TEST Image Built" >> $GITHUB_STEP_SUMMARY
+          echo "- **TEST tag:** \`${{ steps.login-ecr.outputs.registry }}/agentcore-tip-mcp-test:${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Also tagged:** \`...:test\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform:** linux/arm64 (Graviton)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python:** 3.12" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "👉 To promote to PROD, trigger **ECR Promote** workflow manually." >> $GITHUB_STEP_SUMMARY

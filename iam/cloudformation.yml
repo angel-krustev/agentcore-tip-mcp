@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  TIP Enhanced IAM role with tag-gated capabilities for Bedrock, Athena, S3, and Glue.
+  Uses a single role with session-tag conditions so TIP can dynamically control
+  per-session access to each service.
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: idp-stack-IdEnhancedRole
+    Description: Name of the IAM role.
+
+  BedrockModelRegion:
+    Type: String
+    Default: us-east-1
+    Description: Region for Bedrock resource ARN.
+
+Resources:
+  #####################################################################
+  # TIP Enhanced Role
+  #####################################################################
+  TIPSsoEnhancedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSSOAssumeRoleWithTagSession
+            Effect: Allow
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+            Principal:
+              Service: sso.amazonaws.com
+      ManagedPolicyArns:
+        # SSO needs to be able to tag sessions; the tag policy is inline below.
+        []
+      Tags:
+        - Key: Project
+          Value: AgentCore-TIP-MCP-Broker
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  #####################################################################
+  # Tag-Gated Inline Policy (Bedrock + Athena + S3 + Glue)
+  #####################################################################
+  TagGatedCapabilities:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: tip-session-tag-capabilities
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # --- Bedrock ---
+          - Sid: AllowBedrockIfTipApproved
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: !Sub "arn:aws:bedrock:${BedrockModelRegion}:::foundation-model/*"
+            Condition:
+              StringEquals:
+                aws:PrincipalTag/tp:approved-for-bedrock: "true"
+
+          # --- Athena ---
+          - Sid: AllowAthenaIfTipApproved
+            Effect: Allow
+            Action:
+              - athena:StartQueryExecution
+              - athena:GetQueryExecution
+              - athena:GetQueryResults
+              - athena:StopQueryExecution
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalTag/tp:approved-for-athena: "true"
+
+          # --- S3 ---
+          - Sid: AllowS3IfTipApproved
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalTag/tp:approved-for-s3: "true"
+
+          # --- S3 Logging for Athena queries ---
+          - Sid: AllowS3LoggingForAthena
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalTag/tp:approved-for-athena: "true"
+
+          # --- Glue Data Catalog (required by Athena) ---
+          - Sid: AllowGlueForAthena
+            Effect: Allow
+            Action:
+              - glue:GetTable
+              - glue:GetDatabase
+              - glue:GetPartitions
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:PrincipalTag/tp:approved-for-athena: "true"
+
+Outputs:
+  RoleArn:
+    Description: ARN of the TIP Enhanced Role
+    Value: !GetAtt TIPSsoEnhancedRole.Arn
+    Export:
+      Name: tip-enhanced-role-arn
+
+  RoleName:
+    Description: Name of the role
+    Value: !Ref TIPSsoEnhancedRole
+    Export:
+      Name: tip-enhanced-role-name

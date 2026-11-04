@@ -1,0 +1,47 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:DescribeImageScanFindings",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:StartImageScan",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": [
+        "arn:aws:ecr:<AWS_REGION>:<AWS_ACCOUNT_ID>:repository/agentcore-tip-mcp-test",
+        "arn:aws:ecr:<AWS_REGION>:<AWS_ACCOUNT_ID>:repository/agentcore-tip-mcp"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ecr:CreateRepository",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "AgentCore-TIP-MCP-Broker",
+          "aws:RequestTag/Environment": "production"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "Project",
+            "Environment"
+          ]
+        }
+      }
+    }
+  ]
+}

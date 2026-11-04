@@ -1,0 +1,69 @@
+# ==============================================================================
+# AgentCore-TIP-MCP-Broker - ECR Test Build
+# ==============================================================================
+# Stage 1: Compile Cython extensions (linux/arm64, Python 3.12)
+# Stage 2: Assemble final image with MCP server
+#
+# Built and pushed by .github/workflows/ecr-deploy.yml.
+# ==============================================================================
+
+# --- Stage 1: Build Cython wheel ---
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml setup.py ./
+COPY README.md LICENSE ./
+COPY agentcore_tip ./agentcore_tip
+
+RUN pip install --upgrade pip setuptools wheel Cython
+# Always regenerate C from the .py sources; never reuse a stale generated .c file.
+ENV AGENTCORE_TIP_FORCE_RECOMPILE=1
+RUN python setup.py build_ext --inplace
+RUN python setup.py bdist_wheel
+
+# --- Stage 2: Final runtime image ---
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING=utf-8
+ENV PORT=8080
+
+# AgentCore Runtime configuration
+ENV AGENTCORE_RUNTIME_ENABLED=1
+ENV AGENTCORE_MCP_ENDPOINT=/mcp/tools
+
+# Install Python 3.12 + shadow-utils (for useradd)
+RUN dnf install -y --setopt=install_weak_deps=False python3.12 python3.12-pip shadow-utils && \
+    dnf clean all && rm -rf /var/cache/dnf/*
+
+# Create non-root user for security
+RUN useradd --uid 10001 --create-home --home-dir /home/appuser --shell /usr/sbin/nologin appuser
+
+# Install the pre-built wheel
+COPY --from=builder /build/dist/*.whl /tmp/
+
+RUN python3.12 -m pip install --no-cache-dir /tmp/*.whl && \
+    python3.12 -m pip install --no-cache-dir \
+      "boto3>=1.34.0" \
+      "botocore>=1.34.0" \
+      "mcp>=1.0.0" \
+      "httpx>=0.27.0" \
+      "slowapi>=0.1.9" \
+      "sqlglot==30.22.0" \
+      "redis>=5.0.1" \
+      "jsonschema>=4.20.0" && \
+    rm -rf /tmp/*.whl /root/.cache
+
+USER appuser
+EXPOSE 8080 8081
+
+# Run the PEP: Plane A (ingestion) on 8080, Plane B (MCP) on 8081
+CMD ["python3.12", "-m", "agentcore_tip.core.pep_server"]

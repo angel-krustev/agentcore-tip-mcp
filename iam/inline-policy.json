@@ -1,0 +1,79 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowBedrockIfTipApproved",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "arn:aws:bedrock:*:*:foundation-model/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/tp:approved-for-bedrock": "true"
+        }
+      }
+    },
+    {
+      "Sid": "AllowAthenaIfTipApproved",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:StopQueryExecution"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/tp:approved-for-athena": "true"
+        }
+      }
+    },
+    {
+      "Sid": "AllowS3IfTipApproved",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/tp:approved-for-s3": "true"
+        }
+      }
+    },
+    {
+      "Sid": "AllowS3LoggingForAthena",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/tp:approved-for-athena": "true"
+        }
+      }
+    },
+    {
+      "Sid": "AllowGlueForAthena",
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetTable",
+        "glue:GetDatabase",
+        "glue:GetPartitions"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/tp:approved-for-athena": "true"
+        }
+      }
+    }
+  ]
+}

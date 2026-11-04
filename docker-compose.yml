@@ -1,0 +1,36 @@
+services:
+  agentcore-tip-mcp:
+    image: ${ECR_REGISTRY:?Set ECR_REGISTRY}/agentcore-tip-mcp-test:test
+    ports:
+      # Host port is configurable via HOST_PORT because 8080 is
+      # sometimes left bound by a stale Docker Desktop/WSL2 port-forward after
+      # a container is removed. Override with e.g. HOST_PORT=8081
+      # if requests to 8080 don't reach the container (no access log lines
+      # appear in `docker compose logs` for requests that otherwise look OK).
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID}
+      TIP_ROLE_ARN: ${TIP_ROLE_ARN}
+      OIDC_ROLE_ARN: ${OIDC_ROLE_ARN:-}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      IDP: ${IDP:-entra-id}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      ATHENA_WORKGROUP: idc-wg
+      ATHENA_DATABASE: lfdb
+      ATHENA_TABLE: clients
+      BEDROCK_MODEL: ${BEDROCK_MODEL:-amazon.nova-lite-v1:0}
+      SCHEMA_HINT: ${SCHEMA_HINT:-}
+      STDIO_AUTH_REQUIRED: ${STDIO_AUTH_REQUIRED:-}
+      STDIO_AUTH_TOKEN: ${STDIO_AUTH_TOKEN:-}
+      BEDROCK_RETRIES: ${BEDROCK_RETRIES:-3}
+      BEDROCK_BACKOFF: ${BEDROCK_BACKOFF:-0.5}
+      BEDROCK_TIMEOUT_SECONDS: ${BEDROCK_TIMEOUT_SECONDS:-30}
+      ATHENA_RETRIES: ${ATHENA_RETRIES:-2}
+      ATHENA_BACKOFF: ${ATHENA_BACKOFF:-1.0}
+      CONTEXT_TTL_SECONDS: ${CONTEXT_TTL_SECONDS:-1800}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-1048576}
+      IDEMPOTENCY_TTL_SECONDS: ${IDEMPOTENCY_TTL_SECONDS:-300}
+      LOG_JSON: ${LOG_JSON:-false}

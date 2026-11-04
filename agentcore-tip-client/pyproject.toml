@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentcore-tip-client"
+version = "0.1.0"
+description = "OIDC client for AgentCore-TIP-MCP-Broker identity propagation"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Angel Krustev / VerticalTurn Inc."}
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Authentication",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+agentcore-tip-client = "agentcore_tip_client.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/angel-krustev/agentcore-tip-mcp"
+Repository = "https://github.com/angel-krustev/agentcore-tip-mcp"
+Issues = "https://github.com/angel-krustev/agentcore-tip-mcp/issues"
+
+[tool.setuptools.packages.find]
+include = ["agentcore_tip_client*"]

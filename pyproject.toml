@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "Cython>=3.0.0", "wheel>=0.41.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentcore-tip-mcp"
+version = "0.1.0"
+description = "Zero-trust MCP broker for AWS Trusted Identity Propagation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Angel Krustev / VerticalTurn Inc."}]
+dependencies = [
+  "boto3>=1.35.0",
+  "botocore>=1.35.0",
+  "pyjwt>=2.8.0",
+  "cryptography>=42.0.0",
+  "pydantic>=2.7.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0",
+  # MCP (Model Context Protocol) support
+  "mcp>=1.0.0",
+  # AgentCore Runtime helpers
+  "httpx>=0.27.0",
+  # Rate limiting
+  "slowapi>=0.1.9",
+  # JSON Schema validation
+  "jsonschema>=4.20.0",
+  # PEP: SQL AST guard and session store
+  "sqlglot==30.22.0",
+  "redis>=5.0.1",
+]
+
+[tool.cythonize]
+# Core TIP modules to compile to native extensions
+# Core TIP identity and execution logic
+target = [
+    "agentcore_tip/core/strategies/sso_oidc.py",
+    "agentcore_tip/core/strategies/web_identity.py",
+    "agentcore_tip/core/strategies/base.py",
+    "agentcore_tip/core/context.py",
+    "agentcore_tip/core/session_store.py",
+    "agentcore_tip/core/sql_guard.py",
+    "agentcore_tip/core/credentials.py",
+    "agentcore_tip/core/hooks.py",
+    "agentcore_tip/core/config.py",
+    "agentcore_tip/core/exceptions.py",
+    "agentcore_tip/core/decorators.py",
+    "agentcore_tip/core/middleware.py",
+    "agentcore_tip/core/agent_validator.py",
+    "agentcore_tip/core/agentcore_provider.py",
+    # NOTE: pep_server.py, plane_a_ingest.py and plane_b_mcp.py are NOT compiled --
+    # FastAPI needs inspect.signature() on routes
+    "agentcore_tip/integrations/s3_access_grants.py",
+    "agentcore_tip/integrations/lake_formation.py",
+]
