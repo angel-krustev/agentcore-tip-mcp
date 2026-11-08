@@ -71,6 +71,105 @@ Each app mounts only its own router: `/mcp` does not exist on 8080 and `/session
               Athena/Glue user-agent tag: AgentCoreTIP/mcp
 ```
 
+## Token exchange, step by step
+
+The broker performs **two separate token exchanges**. The first (Plane A) turns the user's IdP login into an
+IAM Identity Center context assertion and vaults it. The second (Plane B) happens only when the agent submits
+SQL: the vaulted assertion is attached to a just-in-time `sts:AssumeRole`, producing short-lived, table-scoped
+AWS credentials that never leave the PEP process. The MCP execution plane is part of the PEP itself —
+"how MCP gets the credentials" is an in-process call, not a network hop.
+
+Separately, the Bedrock AgentCore Runtime enforces its own **inbound auth** on the user → agent invocation
+with an Entra ID JWT issued for a **different audience** (the agent's app registration); that token is
+app-level, unrelated to the Plane A TIP token, and never reaches the PEP.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User (VPN)
+    participant IdP as OIDC IdP (Entra ID)
+    participant A as PEP Plane A :8080
+    participant STS as AWS STS
+    participant IdC as IAM Identity Center (SSO-OIDC)
+    participant R as Redis session vault
+    participant Agent as Bedrock AgentCore agent
+    participant B as PEP Plane B :8081 (MCP)
+    participant LF as Athena / Glue / Lake Formation
+
+    U->>IdP: MFA login (PKCE)
+    IdP-->>U: IdP JWT (id token)
+    U->>A: POST /sessions/init { token: IdP JWT }
+    A->>STS: AssumeRoleWithWebIdentity(OIDC_ROLE_ARN, WebIdentityToken=JWT) — unsigned
+    STS-->>A: bootstrap credentials (sign the next call only)
+    A->>IdC: CreateTokenWithIAM(clientId=SSO_CLIENT_ID, grant=jwt-bearer, assertion=JWT)
+    IdC-->>A: token response with sts:identity_context (Identity Center context assertion)
+    A->>R: Fernet-encrypt {session_ref, idc_context, user_id, expires_at} (TTL 3600s)
+    A-->>U: { session_ref, expires_in } — opaque, no token, no credentials
+    U->>Agent: hands session_ref to the agent session
+    Agent->>B: POST /mcp/tools/query_lake_formation/call { session_ref, sql } (SigV4 as agent role)
+    B->>B: verify caller ARN → load + decrypt session → TOFU bind to agent role
+    B->>B: sql_guard: validate SQL, extract tables, build per-table inline policy
+    B->>STS: AssumeRole(TIP_ROLE_ARN, ProvidedContexts=[idc_context], SourceIdentity=agent, Policy=per-table, 900s)
+    STS-->>B: short-lived downscoped credentials (held in memory only)
+    B->>LF: Athena/Glue with those credentials — Lake Formation applies the user's grants
+    LF-->>B: rows
+    B->>B: credentials discarded (creds.clear())
+    B-->>Agent: rows only — never a JWT, assertion or AWS key
+```
+
+### Plane A — user → OIDC → PEP → Identity Center assertion
+
+1. **User → IdP.** The user authenticates to the OIDC IdP (Entra ID, PKCE; MFA enforced by IdP policy) and
+   receives an IdP JWT. The agent never sees this token.
+2. **User → PEP.** The user (or the ingestion client) posts the JWT to Plane A:
+   `POST /sessions/init { "token": "<IdP JWT>" }` ([`plane_a_ingest.py`](../agentcore_tip/core/plane_a_ingest.py)).
+3. **PEP → STS: bootstrap.** When `OIDC_ROLE_ARN` is configured, the PEP calls
+   `sts:AssumeRoleWithWebIdentity` with the JWT as the web-identity token, using an **unsigned** STS client
+   (no ambient credentials needed). The resulting temporary credentials exist only to sign the next call
+   ([`sso_oidc.py`](../agentcore_tip/core/strategies/sso_oidc.py), `_session_for_exchange`).
+4. **PEP → Identity Center: CreateTokenWithIAM.** With those bootstrap credentials the PEP calls SSO-OIDC
+   `CreateTokenWithIAM` (`clientId = SSO_CLIENT_ID`, `grantType = urn:ietf:params:oauth:grant-type:jwt-bearer`,
+   `assertion = <IdP JWT>`). This is the AWS **Trusted Identity Propagation** exchange: Identity Center maps
+   the IdP user to its own user and returns a token response carrying `sts:identity_context` — the
+   **Identity Center context assertion** (`_create_token_with_iam`, `_extract_identity_context`).
+5. **Vault, don't forward.** The PEP keeps `{identity_context, user_id}` only. The record
+   `{session_ref, idc_context, user_id, created_at, expires_at}` is Fernet-encrypted and stored in Redis with
+   a TTL ([`session_store.py`](../agentcore_tip/core/session_store.py)). **No AWS credentials are created for
+   the user at this point**, and the IdP JWT is discarded after the exchange.
+6. **PEP → user.** The response is only `{ "session_ref": "sess_<128-bit random>", "expires_in": 3600 }`.
+   The user passes this opaque reference to the agent session.
+
+### Plane B — agent SQL → MCP → credentials from the vaulted assertion
+
+7. **Agent → MCP.** The LLM writes SQL and the agent calls a Plane B tool:
+   `POST /mcp/tools/query_lake_formation/call { session_ref, sql }`, SigV4-signed with the **agent's own IAM
+   role**. The trusted front end (private API Gateway / Lambda proxy) verifies the signature and injects the
+   caller ARN header; the PEP never parses a bearer token here.
+8. **Authorize the caller.** Plane B parses the caller ARN, requires the carrier role's account (and the
+   `PEP_ALLOWED_AGENT_ROLES` allow-list when set), then resolves `session_ref`: the encrypted record is loaded
+   and decrypted, and **TOFU binding** ensures only the first agent role that used this `session_ref` may keep
+   using it ([`plane_b_mcp.py`](../agentcore_tip/core/plane_b_mcp.py)).
+9. **Scope from the SQL.** [`sql_guard.py`](../agentcore_tip/core/sql_guard.py) parses the SQL with `sqlglot`,
+   rejects anything but a single `SELECT`/`WITH`, extracts every referenced table from the AST and generates an
+   **inline STS session policy** naming only those tables, the fixed Athena workgroup and the results prefix.
+10. **MCP gets the credentials — in process.** The tool handler calls `_vend_credentials`, which invokes
+    `assume_downscoped_role` on the strategy: a single `sts:AssumeRole` on the carrier role (`TIP_ROLE_ARN`)
+    with
+    - `ProvidedContexts = [{ProviderArn: IdentityCenter, ContextAssertion: <vaulted idc_context>}]` — the
+      user's identity rides into the session,
+    - `SourceIdentity = <agent role name>` — the agent is pinned in CloudTrail,
+    - `Policy = <per-table inline policy from step 9>` — the session can touch nothing else,
+    - `DurationSeconds = 900` and `RoleSessionName = <base>-<uuid4>`, where the UUID is logged as
+      `request_id` for CloudTrail correlation.
+    The effective permissions are the **intersection** of the carrier role's policy, the inline session policy
+    and the user's own Lake Formation grants (selected via the identity context).
+11. **Execute and discard.** Athena/Glue run in an executor with those credentials; Lake Formation filters
+    rows/columns by the *user's* grants, not the agent's or the PEP's. The credentials are cleared
+    (`creds.clear()`) in a `finally` block before the response is built.
+12. **Respond.** The agent receives rows (bounded by `max_rows` / `MAX_RESPONSE_BYTES`) or one generic error.
+    At no point does the agent, the MCP transport or the response carry a JWT, an Identity Center assertion or
+    an AWS key — the only credential-shaped thing the agent ever holds is the opaque `session_ref`.
+
 ## Tools (Plane B)
 
 `GET /mcp/tools` lists them; `POST /mcp/tools/<name>/call` (or JSON-RPC `POST /mcp`) invokes them. Every tool

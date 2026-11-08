@@ -1,44 +1,66 @@
 # Athena / Lake Formation MFA test
 
-This example starts a local AgentCore-compatible AgentCore-TIP-MCP-Broker agent and invokes
+This example starts a local AgentCore-compatible AgentCore-TIP-MCP-Broker PEP server and invokes
 Athena through Lake Formation trusted identity propagation.
 
-## 1. Configure the agent
+## 1. Configure environment variables
+
+All env vars are documented in the source — no `VERTICALTRUST_` prefix is used.
 
 PowerShell:
 
 ```powershell
 $env:AWS_REGION = "us-east-1"
-$env:VERTICALTRUST_SSO_CLIENT_ID = "<identity-center-token-exchange-application-client-id-or-arn>"
-$env:VERTICALTRUST_TIP_ROLE_ARN = "<final-lake-formation-tip-role-arn>"
+$env:SSO_CLIENT_ID = "<identity-center-token-exchange-application-client-id-or-arn>"
+$env:TIP_ROLE_ARN = "<final-lake-formation-tip-role-arn>"
 
 # Optional, if your architecture uses an intermediary OIDC role before CreateTokenWithIAM.
-$env:VERTICALTRUST_OIDC_ROLE_ARN = "<intermediary-oidc-role-arn>"
+$env:OIDC_ROLE_ARN = "<intermediary-oidc-role-arn>"
 ```
 
-If you already have an `aws-oidc-tip` JSON config, you can use it directly:
+Or load from `.env`:
 
 ```powershell
-$env:VERTICALTRUST_CONFIG_FILE = "C:\path\to\aws-oidc-tip-config.json"
+Get-Content ..\.env | ForEach-Object {
+    if ($_ -match '^#|^\s*$') { return }
+    $key, $value = $_ -split '=', 2
+    [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
+}
 ```
 
-Field mapping:
+Server-side env vars:
 
-| aws-oidc-tip config field | AgentCoreTIP use |
-| --- | --- |
-| `token_exchange_application_arn` | Agent-side `CreateTokenWithIAM` client ID/application ARN |
-| `oidc_role_arn` | Optional intermediary `AssumeRoleWithWebIdentity` role |
-| `id_enhanced_role_arn` | Final TIP role used with STS `ProvidedContexts` |
-| `region` | AWS region |
-| `session_duration_seconds` | Exchanged credential duration |
-| `entra_tenant_id` | Builds Entra discovery URL |
-| `entra_client_id` | Browser MFA public/native OIDC client ID |
+| Env var | Default | Description |
+| --- | --- | --- |
+| `SSO_CLIENT_ID` | *(required)* | Identity Center token exchange application ARN |
+| `TIP_ROLE_ARN` | *(required)* | Final TIP role for Lake Formation access |
+| `OIDC_ROLE_ARN` | — | Optional intermediary OIDC role |
+| `CONFIG_FILE` | — | Path to JSON config (alternative to env vars) |
+| `ATHENA_WORKGROUP` | `idc-wg` | Athena workgroup |
+| `ATHENA_DATABASE` | `lfdb` | Athena database |
+| `ATHENA_OUTPUT_LOCATION` | — | S3 prefix for query results |
+| `PEP_ENCRYPTION_KEY` | — | Fernet key for session encryption (required with Redis) |
+| `REDIS_URL` | — | Redis URL for session persistence (`rediss://` required) |
 
-## 2. Run the agent locally
+Client-side env vars:
+
+| Env var | Default | Description |
+| --- | --- | --- |
+| `AGENT_URL` | `http://127.0.0.1:8080/invocations` | Agent server URL |
+| `IDP` | `entra-id` | Identity provider (`entra-id` / `okta` / `cognito`) |
+| `OIDC_CLIENT_ID` | *(required)* | Public/native OIDC client ID |
+| `OIDC_DISCOVERY_URL` | — | OIDC discovery URL (auto-derived from `ENTRA_TENANT_ID`) |
+| `OIDC_REDIRECT_URI` | `http://127.0.0.1:8765/callback` | Loopback redirect URI |
+| `OIDC_SCOPES` | `openid profile email` | OIDC scopes |
+| `OIDC_PROMPT` | `login` | OIDC prompt |
+| `OIDC_TIMEOUT_SECONDS` | `300` | Browser login timeout |
+| `USER_TOKEN` | — | Pre-existing JWT (skips browser login) |
+| `USER_ID` | `mfa-test-user` | End-user identifier |
+
+## 2. Run the PEP server locally
 
 ```powershell
-$env:PYTHONPATH = "C:\Users\angel\projects\AgentCore-TIP-MCP-Broker"
-python -m uvicorn agents.athena_lf_agent:app --host 0.0.0.0 --port 8080
+python -m agentcore_tip.core.pep_server   # Plane A (/sessions) on 8080, Plane B (/mcp) on 8081
 ```
 
 Or run the container:
@@ -49,12 +71,9 @@ docker compose up --build
 
 ## 3. Invoke with automatic browser MFA
 
-AgentCoreTIP supports the same identity providers as `aws-oidc-tip`'s
-`cihi_auth.auth` package: **Entra ID** (Microsoft/Azure AD), **Okta**, and
-**Cognito** (hosted UI). Pick one with `--idp` / `VERTICALTRUST_IDP`, or let
-it fall back to the `idp` field already present in your `aws-oidc-tip` config
-file. Configure a public/native OIDC client with a loopback redirect URI such
-as:
+The client supports **Entra ID** (Microsoft/Azure AD), **Okta**, and **Cognito**
+(hosted UI). Pick one with `--idp` or `IDP`. Configure a public/native OIDC
+client with a loopback redirect URI such as:
 
 ```text
 http://127.0.0.1:8765/callback
@@ -63,67 +82,47 @@ http://127.0.0.1:8765/callback
 ### Entra ID (Microsoft / Azure AD)
 
 ```powershell
-$env:PYTHONPATH = "C:\Users\angel\projects\AgentCore-TIP-MCP-Broker"
-$env:VERTICALTRUST_IDP = "entra-id"
-$env:VERTICALTRUST_OIDC_DISCOVERY_URL = "https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration"
-$env:VERTICALTRUST_OIDC_CLIENT_ID = "<entra-native-public-client-id>"
-$env:VERTICALTRUST_OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
+$env:IDP = "entra-id"
+$env:ENTRA_TENANT_ID = "<tenant-id>"
+$env:OIDC_CLIENT_ID = "<entra-native-public-client-id>"
+$env:OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
 
-python -m examples.mfa_athena_client --user-id "alice@example.com"
+agentcore-tip-client --user-id "alice@example.com"
 ```
 
-For your `aws-oidc-tip` config, `VERTICALTRUST_OIDC_CLIENT_ID` is the
-`entra_client_id` value, and `VERTICALTRUST_OIDC_DISCOVERY_URL` can be
-omitted if `entra_tenant_id` is present in the config file — the discovery
-URL is derived from it automatically.
+`OIDC_DISCOVERY_URL` is auto-derived from `ENTRA_TENANT_ID`, but you can set it explicitly:
+
+```powershell
+$env:OIDC_DISCOVERY_URL = "https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration"
+```
 
 ### Okta
 
 ```powershell
-$env:PYTHONPATH = "C:\Users\angel\projects\AgentCore-TIP-MCP-Broker"
-$env:VERTICALTRUST_IDP = "okta"
-$env:VERTICALTRUST_OKTA_URL = "https://dev-12345678.okta.com/oauth2/default"
-$env:VERTICALTRUST_OIDC_CLIENT_ID = "<okta-native-public-client-id>"
-$env:VERTICALTRUST_OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
+$env:IDP = "okta"
+$env:OKTA_URL = "https://dev-12345678.okta.com/oauth2/default"
+$env:OIDC_CLIENT_ID = "<okta-native-public-client-id>"
+$env:OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
 
-python -m examples.mfa_athena_client --user-id "alice@example.com"
+agentcore-tip-client --user-id "alice@example.com"
 ```
 
-No discovery document lookup is used for Okta — the authorize/token
-endpoints are derived directly as `<okta_url>/v1/authorize` and
-`<okta_url>/v1/token`, matching `cihi_auth.auth.okta_auth.OktaAuth`.
+No discovery document lookup — endpoints are derived as `<okta_url>/v1/authorize` and
+`<okta_url>/v1/token`.
 
 ### Cognito (hosted UI)
 
 ```powershell
-$env:PYTHONPATH = "C:\Users\angel\projects\AgentCore-TIP-MCP-Broker"
-$env:VERTICALTRUST_IDP = "cognito"
-$env:VERTICALTRUST_COGNITO_DOMAIN = "https://your-domain.auth.us-east-1.amazoncognito.com"
-$env:VERTICALTRUST_OIDC_CLIENT_ID = "<cognito-app-client-id>"
-$env:VERTICALTRUST_OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
+$env:IDP = "cognito"
+$env:COGNITO_DOMAIN = "https://your-domain.auth.us-east-1.amazoncognito.com"
+$env:OIDC_CLIENT_ID = "<cognito-app-client-id>"
+$env:OIDC_REDIRECT_URI = "http://127.0.0.1:8765/callback"
 
-python -m examples.mfa_athena_client --user-id "alice@example.com"
+agentcore-tip-client --user-id "alice@example.com"
 ```
 
-The authorize/token endpoints are derived as `<cognito_domain>/oauth2/authorize`
-and `<cognito_domain>/oauth2/token`, matching
-`cihi_auth.auth.cognito_auth.CognitoAuth`.
-
-### Config-file field mapping (all IdPs)
-
-If `VERTICALTRUST_CONFIG_FILE` points at your `aws-oidc-tip` JSON config, the
-provider and its settings are picked up automatically, including the file's
-own `idp` field:
-
-| aws-oidc-tip config field | AgentCoreTIP use |
-| --- | --- |
-| `idp` | Selects the provider (`entra-id` / `okta` / `cognito`) unless `--idp`/`VERTICALTRUST_IDP` overrides it |
-| `entra_tenant_id` | Builds the Entra discovery URL |
-| `entra_client_id` | Entra browser MFA public/native OIDC client ID |
-| `okta_url` | Okta authorize/token base URL |
-| `okta_client_id` | Okta browser MFA client ID (used if `VERTICALTRUST_OIDC_CLIENT_ID` is unset) |
-| `cognito_domain` | Cognito hosted-UI authorize/token base URL |
-| `cognito_client_id` | Cognito app client ID (used if `VERTICALTRUST_OIDC_CLIENT_ID` is unset) |
+Endpoints are derived as `<cognito_domain>/oauth2/authorize` and
+`<cognito_domain>/oauth2/token`.
 
 Regardless of provider, the client opens the browser, your IdP enforces MFA,
 the client captures the authorization callback locally, and then it invokes:
@@ -137,7 +136,7 @@ against Athena workgroup `idc-wg`.
 If you already have a post-MFA JWT, skip browser login:
 
 ```powershell
-python -m examples.mfa_athena_client --no-browser-login --user-id "alice@example.com"
+agentcore-tip-client --no-browser-login --user-id "alice@example.com"
 ```
 
 ## 4. Test the Secure Broker / PEP with MFA
