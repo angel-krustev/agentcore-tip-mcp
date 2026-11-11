@@ -12,6 +12,8 @@ AgentCore-TIP-MCP-Broker is a deterministic policy enforcement point (PEP) for c
 
 [Watch the demo on YouTube](https://youtu.be/E_QWplNfCiM).
 
+**Showcase repository:** [Lakehouse Claims Agent MVP](https://github.com/angel-krustev/lakehouse-claims-agent-mvp).
+
 ## Security model
 
 - **Private M2M path:** In the intended deployment, Plane B runs on AWS Fargate behind a **private API Gateway with IAM authorization**. AWS infrastructure verifies the signed request; the broker does not implement custom Python SigV4 or presigned-URL verification.
