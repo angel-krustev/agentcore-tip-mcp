@@ -33,6 +33,30 @@ Athena + Lake Formation / Glue / S3 Access Grants
 
 The identity provider token is used only in the identity-ingestion flow. After establishing the identity context, the agent-to-PEP tool handoff uses the opaque session reference. AWS-managed IAM authorization protects the private M2M ingress; do not expose the Fargate service directly.
 
+### Example end-to-end integration flow
+
+The following diagram illustrates the broker integrated with a claims-data application. It is an example deployment; this repository's intended M2M ingress is a private API Gateway with IAM authorization. AWS validates the signed request at the gateway before routing it to the PEP.
+
+![AgentCore TIP MCP claims integration architecture](AgentCore-TIP-MCP.png)
+
+The diagram labels 13 flow steps, with an additional inbound-authentication step marked 7a:
+
+1. **MFA login:** The user signs in to Entra ID with PKCE and receives an identity-provider JWT.
+2. **Initialize the session:** The application posts the JWT to `/sessions/init` through the VPN load balancer.
+3. **Assume the web identity:** The broker uses the identity-provider token with AWS STS `AssumeRoleWithWebIdentity` to establish the user's AWS identity.
+4. **Create the TIP token:** The broker calls `CreateTokenWithIAM` to obtain the Trusted Identity Propagation token.
+5. **Encrypt and vault the session context:** The broker encrypts and stores the identity-center context and user ID in the session vault.
+6. **Return the opaque session reference:** The broker returns `session_ref` to the user environment; the JWT is not passed to the agent.
+7. **Send the prompt to the agent:** The user environment passes `session_ref` and the prompt to the Bedrock AgentCore agent.
+
+   **7a. Authenticate inbound to AgentCore:** AgentCore performs inbound OIDC authentication for the agent request. **Recommendation:** use a different audience for AgentCore than for PEP session initialization, even when both are for the same app.
+8. **Call the MCP endpoint:** The agent sends a SigV4-signed MCP request through private API Gateway. AWS validates IAM authorization at the gateway, which routes the request to Plane B on port 8081.
+9. **Load and bind the session:** Plane B loads and decrypts the session data from the encrypted Redis vault, then binds the session to the first agent role (TOFU).
+10. **Assume the scoped role:** The broker assumes an AWS role using the identity-center context and inline policy.
+11. **Execute the query:** The broker queries Athena/Glue using short-lived credentials. Lake Formation enforces the user's row-level security and filters.
+12. **Return authorized rows:** Only filtered rows, without keys or tokens, are returned from the data layer.
+13. **Return results to the user:** The results are returned to the user environment.
+
 ## Repository layout
 
 - `agentcore_tip/` — PEP runtime, identity strategies, SQL guard, and AWS integrations.
