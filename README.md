@@ -1,8 +1,16 @@
 # AgentCore-TIP-MCP-Broker
 
+> **Integration gap (November 2026):** AWS does not provide a native Amazon Bedrock AgentCore-to-IAM Identity Center integration for end-to-end Trusted Identity Propagation to Lake Formation. This solution fills that gap. If AWS introduces native integration in the future, the underlying data-permission model can remain unchanged: it is independent of the agentic flow, with user- and group-level data authorization enforced by Lake Formation, subject to the broker's IAM and session-policy limits.
+
 A Zero-Trust Model Context Protocol (MCP) Broker bridging Amazon Bedrock AgentCore to AWS Lake Formation using Trusted Identity Propagation (TIP).
 
 AgentCore-TIP-MCP-Broker is a deterministic policy enforcement point (PEP) for carrying a user's identity from an authenticated agent session to AWS data services. It is designed to keep identity exchange, session state, and data access under explicit policy controls rather than granting an agent ambient data permissions.
+
+## Video demo
+
+[![Watch the AgentCore-TIP-MCP-Broker demo on YouTube](https://img.youtube.com/vi/E_QWplNfCiM/hqdefault.jpg)](https://youtu.be/E_QWplNfCiM)
+
+[Watch the demo on YouTube](https://youtu.be/E_QWplNfCiM).
 
 ## Security model
 
@@ -71,7 +79,7 @@ The IAM templates cover identity and data-plane roles; they are not a complete A
 
 - Python 3.10 or newer for local development.
 - AWS account access configured for your deployment environment.
-- An identity provider configured for OIDC/TIP.
+- Entra ID, IAM Identity Center, and the target account's IAM OIDC provider configured for TIP. Complete the [Entra ID and AWS identity setup prerequisites](./docs/entra-id-aws-setup.md) before deploying the broker.
 - AWS services and permissions appropriate to your workload (for example, Bedrock, Athena, Lake Formation, Glue, and S3).
 
 The container workflow builds a Linux ARM64 image with Python 3.12.
@@ -109,7 +117,7 @@ Unit tests should use mocks or Botocore stubs and must not require ambient AWS c
 ## AWS infrastructure and deployment
 
 1. Review the [architecture](./docs/ARCHITECTURE.md) and [deployment topologies](./docs/deployment-topologies.md).
-2. Configure the OIDC provider and required IAM role inputs for your account. The Terraform and CloudFormation examples tag supported resources with `Project: AgentCore-TIP-MCP-Broker`.
+2. Follow the [Entra ID and AWS identity setup guide](./docs/entra-id-aws-setup.md) to configure the identity prerequisites and required IAM role inputs for your account. The Terraform and CloudFormation examples tag supported resources with `Project: AgentCore-TIP-MCP-Broker`.
 3. Deploy the broker in a private network. Restrict its ingress to private API Gateway with IAM authorization, and run it as a non-root Fargate task.
 4. Configure the GitHub Actions OIDC role and the repository secret `AWS_ROLE_ARN`.
 5. Create the private ECR repositories, if needed, using the default AWS profile:
