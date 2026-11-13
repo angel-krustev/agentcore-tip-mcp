@@ -31,7 +31,7 @@ The agent receives only `session_ref`, never the Plane A JWT, identity context, 
    **Application (client) ID**.
 2. Under **Authentication**, add a **Mobile and desktop applications** redirect URI for the
    local PKCE client. It must match the client's `OIDC_REDIRECT_URI`, including the path.
-   The screenshot uses `http://localhost:8501/`; the repository client example uses
+   The screenshot uses `http://localhost:8501/` (see the show case); the repository client example uses
    `http://127.0.0.1:8765/callback`. Use the one your client actually listens on.
    A public PKCE client does not need a client secret or implicit grant.
 3. Under **API permissions**, configure only the delegated sign-in scopes needed for this
