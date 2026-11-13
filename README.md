@@ -144,7 +144,3 @@ The supplied ECR workflows use GitHub Actions OIDC for AWS credentials and do no
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
-
-## Enterprise Consulting & Custom Implementations
-
-*Placeholder: add consulting contact details, service offerings, and engagement information here.*
