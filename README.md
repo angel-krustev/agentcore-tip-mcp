@@ -34,6 +34,9 @@ Bedrock AgentCore
 Private API Gateway
     |
     v
+ Lambda
+    |
+    v
 Fargate PEP ( Plane B MCP execution)
     |
     | short-lived, down-scoped AWS credentials
@@ -60,7 +63,7 @@ The diagram labels 13 flow steps, with an additional inbound-authentication step
 7. **Send the prompt to the agent:** The user environment passes `session_ref` and the prompt to the Bedrock AgentCore agent.
 
    **7a. Authenticate inbound to AgentCore:** AgentCore performs inbound OIDC authentication for the agent request. **Recommendation:** use a different audience for AgentCore than for PEP session initialization, even when both are for the same app.
-8. **Call the MCP endpoint:** The agent sends a SigV4-signed MCP request through private API Gateway. AWS validates IAM authorization at the gateway, which routes the request to Plane B on port 8081.
+8. **Call the MCP endpoint:** The agent sends a SigV4-signed MCP request through private API Gateway & Proxy Lambda. AWS validates IAM authorization at the gateway, which routes the request to Plane B on port 8081.
 9. **Load and bind the session:** Plane B loads and decrypts the session data from the encrypted Redis vault, then binds the session to the first agent role (TOFU).
 10. **Assume the scoped role:** The broker assumes an AWS role using the identity-center context and inline policy.
 11. **Execute the query:** The broker queries Athena/Glue using short-lived credentials. Lake Formation enforces the user's row-level security and filters.
